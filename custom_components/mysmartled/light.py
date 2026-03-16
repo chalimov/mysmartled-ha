@@ -93,8 +93,8 @@ class MySmartLedLight(LightEntity):
                 return EFFECT_LIST[idx]
         return None
 
-    def _get_service_info(self):
-        """Get bluetooth service info for the device."""
+    def _get_ble_device(self):
+        """Get BLEDevice from HA bluetooth stack."""
         return async_ble_device_from_address(
             self.hass, self._device.address, connectable=True
         )
@@ -110,10 +110,10 @@ class MySmartLedLight(LightEntity):
         if brightness is not None:
             device_brightness = max(1, int(brightness * 100 / 255))
 
-        service_info = self._get_service_info()
+        ble_device = self._get_ble_device()
 
         await self._device.turn_on(
-            service_info=service_info,
+            ble_device=ble_device,
             brightness=device_brightness,
             rgb=rgb,
             effect=effect,
@@ -122,6 +122,6 @@ class MySmartLedLight(LightEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the light."""
-        service_info = self._get_service_info()
-        await self._device.turn_off(service_info=service_info)
+        ble_device = self._get_ble_device()
+        await self._device.turn_off(ble_device=ble_device)
         self.async_write_ha_state()

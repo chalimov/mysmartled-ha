@@ -7,9 +7,8 @@ import logging
 from dataclasses import dataclass, field
 
 from bleak import BleakClient
+from bleak.backends.device import BLEDevice
 from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
-
-from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 
 from .const import (
     CMD_HEADER,
@@ -105,7 +104,7 @@ class MySmartLedDevice:
             RESERVED_BYTE,                          # [19] Reserved (AA)
         ])
 
-    async def _send_command(self, service_info: BluetoothServiceInfoBleak | None = None) -> bool:
+    async def _send_command(self, ble_device: BLEDevice | None = None) -> bool:
         """Send the current state as a BLE command."""
         cmd = self._build_command()
         _LOGGER.debug(
@@ -116,10 +115,10 @@ class MySmartLedDevice:
 
         for attempt in range(1, RETRY_COUNT + 1):
             try:
-                if service_info:
+                if ble_device:
                     client = await establish_connection(
                         BleakClientWithServiceCache,
-                        service_info.device,
+                        ble_device,
                         self._name,
                         max_attempts=2,
                     )
@@ -155,7 +154,7 @@ class MySmartLedDevice:
 
     async def turn_on(
         self,
-        service_info: BluetoothServiceInfoBleak | None = None,
+        ble_device: BLEDevice | None = None,
         brightness: int | None = None,
         rgb: tuple[int, int, int] | None = None,
         white: bool | None = None,
@@ -207,7 +206,7 @@ class MySmartLedDevice:
         return await self._send_command(service_info)
 
     async def turn_off(
-        self, service_info: BluetoothServiceInfoBleak | None = None
+        self, ble_device: BLEDevice | None = None
     ) -> bool:
         """Turn off the light."""
         self._state.power = False
@@ -217,11 +216,11 @@ class MySmartLedDevice:
         self,
         r: int, g: int, b: int,
         brightness: int | None = None,
-        service_info: BluetoothServiceInfoBleak | None = None,
+        ble_device: BLEDevice | None = None,
     ) -> bool:
         """Set RGB color."""
         return await self.turn_on(
-            service_info=service_info,
+            ble_device=ble_device,
             rgb=(r, g, b),
             brightness=brightness,
         )
@@ -229,11 +228,11 @@ class MySmartLedDevice:
     async def set_brightness(
         self,
         brightness: int,
-        service_info: BluetoothServiceInfoBleak | None = None,
+        ble_device: BLEDevice | None = None,
     ) -> bool:
         """Set brightness (0-100)."""
         return await self.turn_on(
-            service_info=service_info,
+            ble_device=ble_device,
             brightness=brightness,
         )
 
@@ -241,11 +240,11 @@ class MySmartLedDevice:
         self,
         effect: str,
         speed: int = 50,
-        service_info: BluetoothServiceInfoBleak | None = None,
+        ble_device: BLEDevice | None = None,
     ) -> bool:
         """Set an effect by name."""
         return await self.turn_on(
-            service_info=service_info,
+            ble_device=ble_device,
             effect=effect,
             effect_speed=speed,
         )
