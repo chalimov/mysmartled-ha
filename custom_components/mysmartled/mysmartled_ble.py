@@ -203,14 +203,14 @@ class MySmartLedDevice:
             self._state.effect_speed = max(0, min(255, effect_speed))
             self._state.sub_param2 = self._state.effect_speed
 
-        return await self._send_command(service_info)
+        return await self._send_command(ble_device)
 
     async def turn_off(
         self, ble_device: BLEDevice | None = None
     ) -> bool:
         """Turn off the light."""
         self._state.power = False
-        return await self._send_command(service_info)
+        return await self._send_command(ble_device)
 
     async def set_color(
         self,
