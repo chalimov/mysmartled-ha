@@ -55,7 +55,8 @@ class MySmartLedLight(CoordinatorEntity[MySmartLedCoordinator], LightEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.data.connected
+        # Available as long as connection is enabled — coordinator auto-reconnects
+        return self.coordinator.enabled
 
     @property
     def is_on(self) -> bool:
