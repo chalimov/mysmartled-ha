@@ -4,29 +4,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
-from bleak_retry_connector import establish_connection, BleakClientWithServiceCache
 
 from .const import (
     CMD_HEADER,
     HANDLE_WRITE,
     MODE_COLOR,
-    MODE_COLOR_MONOCHROME,
-    MODE_COLOR_TEMPERATURE,
     POWER_OFF,
     POWER_ON,
     RESERVED_BYTE,
-    UUID_NOTIFY,
-    UUID_SERVICE,
     UUID_WRITE,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 RETRY_COUNT = 3
+CONNECT_TIMEOUT = 10.0
 
 
 @dataclass
@@ -37,12 +33,11 @@ class MySmartLedState:
     red: int = 0
     green: int = 0
     blue: int = 0
-    white: bool = True  # White flag
+    white: bool = True
     brightness: int = 100  # 0-100
     mode: int = MODE_COLOR
     effect_index: int = 0
     effect_speed: int = 50
-    # Retained fields (from real traffic defaults)
     sub_param1: int = 0x13
     sub_param2: int = 0x05
     mode_enable: int = 0x00
@@ -60,11 +55,9 @@ class MySmartLedDevice:
     """Controls a YX_LED fiber light via BLE."""
 
     def __init__(self, address: str, name: str = "YX_LED") -> None:
-        """Initialize the device."""
         self._address = address
         self._name = name
         self._state = MySmartLedState()
-        self._client: BleakClient | None = None
 
     @property
     def address(self) -> str:
@@ -82,64 +75,57 @@ class MySmartLedDevice:
         """Build the 20-byte command from current state."""
         s = self._state
         return bytearray([
-            CMD_HEADER,                             # [0]  Header A5
-            POWER_ON if s.power else POWER_OFF,     # [1]  Power
-            s.mode & 0xFF,                          # [2]  Mode type
-            s.sub_param1 & 0xFF,                    # [3]  Sub-param 1
-            s.sub_param2 & 0xFF,                    # [4]  Sub-param 2
-            s.red & 0xFF,                           # [5]  Red
-            s.green & 0xFF,                         # [6]  Green
-            s.blue & 0xFF,                          # [7]  Blue
-            0xFF if s.white else 0x00,              # [8]  White flag
-            min(s.brightness, 100) & 0xFF,          # [9]  Brightness
-            s.mode_enable & 0xFF,                   # [10] Mode enable
-            s.voice_pattern & 0xFF,                 # [11] Voice pattern
-            s.voice_sensitivity & 0xFF,             # [12] Voice sensitivity
-            s.flashing_switch & 0xFF,               # [13] Flashing switch
-            s.flashing_speed & 0xFF,                # [14] Flashing speed
-            s.meteor_switch & 0xFF,                 # [15] Meteor switch
-            s.meteor_value & 0xFF,                  # [16] Meteor value
-            s.meteor_speed & 0xFF,                  # [17] Meteor speed
-            s.light_type & 0xFF,                    # [18] Light type
-            RESERVED_BYTE,                          # [19] Reserved (AA)
+            CMD_HEADER,
+            POWER_ON if s.power else POWER_OFF,
+            s.mode & 0xFF,
+            s.sub_param1 & 0xFF,
+            s.sub_param2 & 0xFF,
+            s.red & 0xFF,
+            s.green & 0xFF,
+            s.blue & 0xFF,
+            0xFF if s.white else 0x00,
+            min(s.brightness, 100) & 0xFF,
+            s.mode_enable & 0xFF,
+            s.voice_pattern & 0xFF,
+            s.voice_sensitivity & 0xFF,
+            s.flashing_switch & 0xFF,
+            s.flashing_speed & 0xFF,
+            s.meteor_switch & 0xFF,
+            s.meteor_value & 0xFF,
+            s.meteor_speed & 0xFF,
+            s.light_type & 0xFF,
+            RESERVED_BYTE,
         ])
+
+    async def _write_ble(self, client: BleakClient, cmd: bytes) -> None:
+        """Try writing command via UUID, then handle fallback."""
+        try:
+            await client.write_gatt_char(UUID_WRITE, cmd, response=False)
+        except Exception as uuid_err:
+            _LOGGER.debug("UUID write failed (%s), trying handle 0x%04X", uuid_err, HANDLE_WRITE)
+            await client.write_gatt_char(HANDLE_WRITE, cmd, response=False)
 
     async def _send_command(self, ble_device: BLEDevice | None = None) -> bool:
         """Send the current state as a BLE command."""
-        cmd = self._build_command()
-        _LOGGER.debug(
-            "Sending to %s: %s",
-            self._address,
-            cmd.hex(),
-        )
+        cmd = bytes(self._build_command())
+        _LOGGER.debug("Sending to %s: %s", self._address, cmd.hex())
 
         for attempt in range(1, RETRY_COUNT + 1):
             try:
-                if ble_device:
-                    client = await establish_connection(
-                        BleakClientWithServiceCache,
-                        ble_device,
-                        self._name,
-                        max_attempts=2,
-                    )
-                else:
-                    client = BleakClient(self._address, timeout=15.0)
-                    await client.connect()
-
+                # Use BLEDevice if available (from HA bluetooth stack),
+                # otherwise fall back to address string
+                target = ble_device if ble_device else self._address
+                client = BleakClient(target, timeout=CONNECT_TIMEOUT)
+                await client.connect()
                 try:
-                    # Try by UUID first, fall back to handle
-                    try:
-                        await client.write_gatt_char(
-                            UUID_WRITE, bytes(cmd), response=False
-                        )
-                    except Exception:
-                        await client.write_gatt_char(
-                            HANDLE_WRITE, bytes(cmd), response=False
-                        )
+                    await self._write_ble(client, cmd)
                     _LOGGER.debug("Write OK to %s (attempt %d)", self._address, attempt)
                     return True
                 finally:
-                    await client.disconnect()
+                    try:
+                        await client.disconnect()
+                    except Exception:
+                        pass
 
             except Exception as e:
                 _LOGGER.warning(
@@ -147,7 +133,7 @@ class MySmartLedDevice:
                     attempt, RETRY_COUNT, self._address, e,
                 )
                 if attempt < RETRY_COUNT:
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(2)
 
         _LOGGER.error("Failed to send command to %s after %d attempts", self._address, RETRY_COUNT)
         return False
@@ -194,8 +180,8 @@ class MySmartLedDevice:
             from .const import EFFECT_LIST
             if effect in EFFECT_LIST:
                 idx = EFFECT_LIST.index(effect)
-                self._state.mode = 0x06  # Effect mode type
-                self._state.sub_param1 = idx & 0xFF  # 0-based index
+                self._state.mode = 0x06
+                self._state.sub_param1 = idx & 0xFF
                 self._state.sub_param2 = self._state.effect_speed
                 self._state.mode_enable = 0x00
 
@@ -218,23 +204,14 @@ class MySmartLedDevice:
         brightness: int | None = None,
         ble_device: BLEDevice | None = None,
     ) -> bool:
-        """Set RGB color."""
-        return await self.turn_on(
-            ble_device=ble_device,
-            rgb=(r, g, b),
-            brightness=brightness,
-        )
+        return await self.turn_on(ble_device=ble_device, rgb=(r, g, b), brightness=brightness)
 
     async def set_brightness(
         self,
         brightness: int,
         ble_device: BLEDevice | None = None,
     ) -> bool:
-        """Set brightness (0-100)."""
-        return await self.turn_on(
-            ble_device=ble_device,
-            brightness=brightness,
-        )
+        return await self.turn_on(ble_device=ble_device, brightness=brightness)
 
     async def set_effect(
         self,
@@ -242,9 +219,4 @@ class MySmartLedDevice:
         speed: int = 50,
         ble_device: BLEDevice | None = None,
     ) -> bool:
-        """Set an effect by name."""
-        return await self.turn_on(
-            ble_device=ble_device,
-            effect=effect,
-            effect_speed=speed,
-        )
+        return await self.turn_on(ble_device=ble_device, effect=effect, effect_speed=speed)
