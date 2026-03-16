@@ -21,8 +21,11 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-RETRY_COUNT = 3
-CONNECT_TIMEOUT = 10.0
+RETRY_COUNT = 5
+CONNECT_TIMEOUT = 15.0
+
+# Global lock — ESP32 BLE proxy can only handle one connection at a time
+_ble_lock = asyncio.Lock()
 
 
 @dataclass
@@ -106,34 +109,37 @@ class MySmartLedDevice:
             await client.write_gatt_char(HANDLE_WRITE, cmd, response=False)
 
     async def _send_command(self, ble_device: BLEDevice | None = None) -> bool:
-        """Send the current state as a BLE command."""
+        """Send the current state as a BLE command.
+
+        Uses a global lock to serialize BLE connections — the ESP32
+        proxy can only handle one connection at a time.
+        """
         cmd = bytes(self._build_command())
         _LOGGER.debug("Sending to %s: %s", self._address, cmd.hex())
 
-        for attempt in range(1, RETRY_COUNT + 1):
-            try:
-                # Use BLEDevice if available (from HA bluetooth stack),
-                # otherwise fall back to address string
-                target = ble_device if ble_device else self._address
-                client = BleakClient(target, timeout=CONNECT_TIMEOUT)
-                await client.connect()
+        async with _ble_lock:
+            for attempt in range(1, RETRY_COUNT + 1):
                 try:
-                    await self._write_ble(client, cmd)
-                    _LOGGER.debug("Write OK to %s (attempt %d)", self._address, attempt)
-                    return True
-                finally:
+                    target = ble_device if ble_device else self._address
+                    client = BleakClient(target, timeout=CONNECT_TIMEOUT)
+                    await client.connect()
                     try:
-                        await client.disconnect()
-                    except Exception:
-                        pass
+                        await self._write_ble(client, cmd)
+                        _LOGGER.debug("Write OK to %s (attempt %d)", self._address, attempt)
+                        return True
+                    finally:
+                        try:
+                            await client.disconnect()
+                        except Exception:
+                            pass
 
-            except Exception as e:
-                _LOGGER.warning(
-                    "Send attempt %d/%d to %s failed: %s",
-                    attempt, RETRY_COUNT, self._address, e,
-                )
-                if attempt < RETRY_COUNT:
-                    await asyncio.sleep(2)
+                except Exception as e:
+                    _LOGGER.warning(
+                        "Send attempt %d/%d to %s failed: %s",
+                        attempt, RETRY_COUNT, self._address, e,
+                    )
+                    if attempt < RETRY_COUNT:
+                        await asyncio.sleep(3)
 
         _LOGGER.error("Failed to send command to %s after %d attempts", self._address, RETRY_COUNT)
         return False
