@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+extracted/
+bugreport.zip
+bugreport_extracted/
+btsnoop_hci.log
+*.xapk
+*.apk
+*.log
