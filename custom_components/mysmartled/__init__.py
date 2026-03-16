@@ -1,25 +1,47 @@
 """The My SmartLed (YX_LED BLE) integration."""
+from __future__ import annotations
 
+import logging
+
+from homeassistant.components import bluetooth
+from homeassistant.components.bluetooth.match import BluetoothCallbackMatcher
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
+from homeassistant.const import CONF_ADDRESS, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
+from .coordinator import MySmartLedCoordinator
 
-PLATFORMS = [Platform.LIGHT]
+_LOGGER = logging.getLogger(__name__)
+
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.LIGHT, Platform.SWITCH]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up My SmartLed from a config entry."""
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry.data
+    address: str = entry.data[CONF_ADDRESS]
+    name: str = entry.data[CONF_NAME]
+
+    coordinator = MySmartLedCoordinator(hass, address, name)
+
+    entry.async_on_unload(
+        bluetooth.async_register_callback(
+            hass,
+            coordinator.handle_bluetooth_event,
+            BluetoothCallbackMatcher(address=address, connectable=True),
+            bluetooth.BluetoothScanningMode.ACTIVE,
+        )
+    )
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        coordinator: MySmartLedCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        await coordinator.async_disconnect()
     return unload_ok
