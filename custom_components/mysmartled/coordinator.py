@@ -51,9 +51,9 @@ class MySmartLedState:
     mode_enable: int = 0x00
     voice_pattern: int = 0xFF
     voice_sensitivity: int = 0x05
-    flashing_switch: int = 0x00  # OFF by default
+    flashing_switch: int = 0xFF  # Always 0xFF in real app traffic
     flashing_speed: int = 0x01
-    meteor_switch: int = 0x00  # OFF by default
+    meteor_switch: int = 0xFF  # Always 0xFF in real app traffic
     meteor_value: int = 0x01
     meteor_speed: int = 0x05
     light_type: int = 0x00
@@ -231,8 +231,6 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
             r, g, b = rgb
             self.data.mode = MODE_COLOR
             self.data.mode_enable = 0x00
-            self.data.flashing_switch = 0x00
-            self.data.meteor_switch = 0x00
             if r == 255 and g == 255 and b == 255:
                 self.data.red = self.data.green = self.data.blue = 0
                 self.data.white = True
@@ -248,8 +246,6 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
                 self.data.sub_param1 = idx & 0xFF  # 0-based in our list
                 self.data.sub_param2 = self.data.effect_speed
                 self.data.mode_enable = 0x00
-                self.data.flashing_switch = 0x00
-                self.data.meteor_switch = 0x00
             elif effect.startswith("Strobe"):
                 speeds = {"Strobe Slow": 20, "Strobe Medium": 50, "Strobe Fast": 80}
                 self.data.flashing_switch = 0xFF
