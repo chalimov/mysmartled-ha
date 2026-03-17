@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 from homeassistant.components import bluetooth
-from homeassistant.components.bluetooth.match import BluetoothCallbackMatcher
+from homeassistant.components.bluetooth import BluetoothCallbackMatcher
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, CONF_NAME, Platform
 from homeassistant.core import HomeAssistant

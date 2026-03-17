@@ -1,11 +1,10 @@
 """Switch entity for MySmartLed — controls BLE connection."""
 from __future__ import annotations
 
-from bleak import BleakError
-
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.const import CONF_ADDRESS, CONF_NAME, EntityCategory
+from homeassistant.const import CONF_ADDRESS, CONF_NAME
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
@@ -48,7 +47,6 @@ class MySmartLedConnectionSwitch(RestoreEntity, SwitchEntity):
         last_state = await self.async_get_last_state()
         if last_state is not None and last_state.state == "off":
             self._coordinator.enabled = False
-        self._coordinator._setup_complete = True
 
     @property
     def is_on(self) -> bool:

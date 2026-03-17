@@ -5,10 +5,11 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.const import CONF_ADDRESS, CONF_NAME, EntityCategory
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_ADDRESS, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -56,7 +57,5 @@ class MySmartLedConnectionStatus(
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        is_on = self.coordinator.data.connected
-        if self._attr_is_on != is_on:
-            self._attr_is_on = is_on
-            self.async_write_ha_state()
+        self._attr_is_on = self.coordinator.data.connected
+        super()._handle_coordinator_update()

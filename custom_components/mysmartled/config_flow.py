@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from bleak import BleakScanner
 import voluptuous as vol
 
 from homeassistant.components.bluetooth import (
@@ -50,7 +49,7 @@ class MySmartLedConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(
                 title=user_input.get(CONF_NAME, "YX_LED"),
                 data={
-                    CONF_ADDRESS: list(self._discovered_devices.keys())[0],
+                    CONF_ADDRESS: self.unique_id,
                     CONF_NAME: user_input.get(CONF_NAME, "YX_LED"),
                 },
             )

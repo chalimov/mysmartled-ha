@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from bleak import BleakClient, BleakError
+from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
@@ -14,8 +15,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     CMD_HEADER,
+    EFFECT_LIST,
     HANDLE_WRITE,
     MODE_COLOR,
+    MODE_EFFECT,
     POWER_OFF,
     POWER_ON,
     RESERVED_BYTE,
@@ -47,9 +50,9 @@ class MySmartLedState:
     mode_enable: int = 0x00
     voice_pattern: int = 0xFF
     voice_sensitivity: int = 0x05
-    flashing_switch: int = 0xFF
+    flashing_switch: int = 0x00  # OFF by default
     flashing_speed: int = 0x01
-    meteor_switch: int = 0xFF
+    meteor_switch: int = 0x00  # OFF by default
     meteor_value: int = 0x01
     meteor_speed: int = 0x05
     light_type: int = 0x00
@@ -69,19 +72,13 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
         self.device_name = name
         self.data = MySmartLedState()
         self._client: BleakClient | None = None
-        self._connecting = False
-        self.enabled = True
-        self._setup_complete = False
+        self._connect_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
+        self.enabled = True
 
     async def _async_update_data(self) -> MySmartLedState:
         """Periodic reconnection if disconnected and enabled."""
-        if (
-            self._setup_complete
-            and self.enabled
-            and not self._client
-            and not self._connecting
-        ):
+        if self.enabled and not self._client and not self._connect_lock.locked():
             await self._connect()
         return self.data
 
@@ -92,20 +89,17 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
         change: bluetooth.BluetoothChange,
     ) -> None:
         """Handle BLE advertisement — trigger connection if needed."""
-        if (
-            self._setup_complete
-            and self.enabled
-            and not self._client
-            and not self._connecting
-        ):
+        if self.enabled and not self._client and not self._connect_lock.locked():
             self.hass.async_create_task(self._connect())
 
     async def _connect(self) -> None:
         """Connect to the YX_LED device."""
-        if self._connecting:
+        if self._connect_lock.locked():
             return
-        self._connecting = True
-        try:
+        async with self._connect_lock:
+            if self._client:
+                return  # Connected while waiting for lock
+
             device = bluetooth.async_ble_device_from_address(
                 self.hass, self.address, connectable=True
             )
@@ -114,27 +108,27 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
                 return
 
             _LOGGER.info("Connecting to %s (%s)", self.device_name, self.address)
-            client = BleakClient(
-                device,
-                disconnected_callback=self._on_disconnect,
-                timeout=CONNECT_TIMEOUT,
-            )
-            await client.connect()
+            try:
+                client = await establish_connection(
+                    BleakClient,
+                    device,
+                    self.device_name,
+                    disconnected_callback=self._on_disconnect,
+                    max_attempts=2,
+                )
 
-            if not self.enabled or not client.is_connected:
-                if client.is_connected:
-                    await client.disconnect()
-                return
+                if not self.enabled or not client.is_connected:
+                    if client.is_connected:
+                        await client.disconnect()
+                    return
 
-            self._client = client
-            self.data.connected = True
-            _LOGGER.info("Connected to %s (%s)", self.device_name, self.address)
-            self.async_set_updated_data(self.data)
+                self._client = client
+                self.data.connected = True
+                _LOGGER.info("Connected to %s (%s)", self.device_name, self.address)
+                self.async_set_updated_data(self.data)
 
-        except Exception as err:
-            _LOGGER.debug("Failed to connect to %s: %s", self.address, err)
-        finally:
-            self._connecting = False
+            except Exception as err:
+                _LOGGER.debug("Failed to connect to %s: %s", self.address, err)
 
     @callback
     def _on_disconnect(self, client: BleakClient) -> None:
@@ -158,7 +152,7 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
 
     async def async_request_connect(self) -> None:
         """Public: trigger a connection attempt."""
-        if not self._client and not self._connecting:
+        if not self._client and not self._connect_lock.locked():
             await self._connect()
 
     def _build_command(self) -> bytes:
@@ -189,28 +183,28 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
 
     async def async_send_command(self) -> bool:
         """Send the current state to the device over persistent connection."""
-        cmd = self._build_command()
-        _LOGGER.debug("Sending to %s: %s", self.address, cmd.hex())
-
         async with self._write_lock:
             client = self._client
             if not client or not client.is_connected:
-                _LOGGER.warning("Not connected to %s, attempting reconnect", self.address)
+                _LOGGER.debug("Not connected to %s, attempting reconnect", self.address)
                 await self._connect()
                 client = self._client
                 if not client or not client.is_connected:
                     _LOGGER.error("Cannot send to %s: not connected", self.address)
                     return False
 
+            cmd = self._build_command()
+            _LOGGER.debug("Sending to %s: %s", self.address, cmd.hex())
+
             for attempt in range(1, 4):
                 try:
                     try:
                         await client.write_gatt_char(UUID_WRITE, cmd, response=False)
-                    except Exception:
+                    except BleakError:
                         await client.write_gatt_char(HANDLE_WRITE, cmd, response=False)
                     _LOGGER.debug("Write OK to %s", self.address)
                     return True
-                except Exception as e:
+                except BleakError as e:
                     _LOGGER.warning(
                         "Write attempt %d/3 to %s failed: %s", attempt, self.address, e
                     )
@@ -236,6 +230,8 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
             r, g, b = rgb
             self.data.mode = MODE_COLOR
             self.data.mode_enable = 0x00
+            self.data.flashing_switch = 0x00
+            self.data.meteor_switch = 0x00
             if r == 255 and g == 255 and b == 255:
                 self.data.red = self.data.green = self.data.blue = 0
                 self.data.white = True
@@ -244,13 +240,29 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
                 self.data.white = False
 
         if effect is not None:
-            from .const import EFFECT_LIST
             if effect in EFFECT_LIST:
                 idx = EFFECT_LIST.index(effect)
-                self.data.mode = 0x06
+                self.data.mode = MODE_EFFECT
                 self.data.sub_param1 = idx & 0xFF
                 self.data.sub_param2 = self.data.effect_speed
                 self.data.mode_enable = 0x00
+                self.data.flashing_switch = 0x00
+                self.data.meteor_switch = 0x00
+            elif effect.startswith("Strobe"):
+                speeds = {"Strobe Slow": 20, "Strobe Medium": 50, "Strobe Fast": 80}
+                self.data.flashing_switch = 0xFF
+                self.data.flashing_speed = speeds.get(effect, 50) & 0xFF
+                self.data.meteor_switch = 0x00
+            elif effect.startswith("Meteor"):
+                patterns = {
+                    "Meteor 1": (1, 50), "Meteor 2": (2, 50), "Meteor 3": (3, 50),
+                    "Meteor Slow": (1, 20), "Meteor Fast": (1, 80),
+                }
+                pat, spd = patterns.get(effect, (1, 50))
+                self.data.meteor_switch = 0xFF
+                self.data.meteor_value = pat & 0xFF
+                self.data.meteor_speed = spd & 0xFF
+                self.data.flashing_switch = 0x00
 
         result = await self.async_send_command()
         self.async_set_updated_data(self.data)
