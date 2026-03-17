@@ -14,12 +14,13 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    BLE_OFF,
+    BLE_ON,
     CMD_HEADER,
     EFFECT_LIST,
     HANDLE_WRITE,
     MODE_COLOR,
     MODE_EFFECT,
-    MODE_EFFECT_COUNT,
     POWER_OFF,
     POWER_ON,
     RESERVED_BYTE,
@@ -51,6 +52,7 @@ class MySmartLedState:
     mode_enable: int = 0x00
     voice_pattern: int = 0xFF
     voice_sensitivity: int = 0x05
+    # Machine layer — independent of LED state
     flashing_switch: int = 0xFF  # Always 0xFF in real app traffic
     flashing_speed: int = 0x01
     meteor_switch: int = 0xFF  # Always 0xFF in real app traffic
@@ -99,7 +101,7 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
             return
         async with self._connect_lock:
             if self._client:
-                return  # Connected while waiting for lock
+                return
 
             device = bluetooth.async_ble_device_from_address(
                 self.hass, self.address, connectable=True
@@ -215,13 +217,15 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
         _LOGGER.error("Failed to write to %s", self.address)
         return False
 
+    # ── LED layer (bytes [2]-[9]) ─────────────────────────────────
+
     async def async_turn_on(
         self,
         brightness: int | None = None,
         rgb: tuple[int, int, int] | None = None,
         effect: str | None = None,
     ) -> bool:
-        """Turn on with optional params."""
+        """Turn on with optional params. Never touches machine-layer bytes [13]-[17]."""
         self.data.power = True
 
         if brightness is not None:
@@ -240,35 +244,53 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
 
         if effect is not None and effect in EFFECT_LIST:
             idx = EFFECT_LIST.index(effect)
-            if idx < MODE_EFFECT_COUNT:
-                # Real mode effect (1-based index in protocol)
-                self.data.mode = MODE_EFFECT
-                self.data.sub_param1 = idx & 0xFF  # 0-based in our list
-                self.data.sub_param2 = self.data.effect_speed
-                self.data.mode_enable = 0x00
-            elif effect.startswith("Strobe"):
-                speeds = {"Strobe Slow": 20, "Strobe Medium": 50, "Strobe Fast": 80}
-                self.data.flashing_switch = 0xFF
-                self.data.flashing_speed = speeds.get(effect, 50) & 0xFF
-                self.data.meteor_switch = 0x00
-            elif effect.startswith("Meteor"):
-                patterns = {
-                    "Meteor 1": (1, 50), "Meteor 2": (2, 50), "Meteor 3": (3, 50),
-                    "Meteor Slow": (1, 20), "Meteor Fast": (1, 80),
-                }
-                pat, spd = patterns.get(effect, (1, 50))
-                self.data.meteor_switch = 0xFF
-                self.data.meteor_value = pat & 0xFF
-                self.data.meteor_speed = spd & 0xFF
-                self.data.flashing_switch = 0x00
+            self.data.mode = MODE_EFFECT
+            self.data.sub_param1 = idx & 0xFF
+            self.data.sub_param2 = self.data.effect_speed
+            self.data.mode_enable = 0x00
 
         result = await self.async_send_command()
         self.async_set_updated_data(self.data)
         return result
 
     async def async_turn_off(self) -> bool:
-        """Turn off the light."""
+        """Turn off the light. Never touches machine-layer bytes [13]-[17]."""
         self.data.power = False
+        result = await self.async_send_command()
+        self.async_set_updated_data(self.data)
+        return result
+
+    # ── Machine layer: Twinkle (bytes [13]-[14]) ──────────────────
+
+    async def async_set_twinkle(
+        self,
+        on: bool | None = None,
+        speed: int | None = None,
+    ) -> bool:
+        """Set twinkle (flashing) state. Only touches bytes [13]-[14]."""
+        if on is not None:
+            self.data.flashing_switch = BLE_ON if on else BLE_OFF
+        if speed is not None:
+            self.data.flashing_speed = max(1, min(255, speed)) & 0xFF
+        result = await self.async_send_command()
+        self.async_set_updated_data(self.data)
+        return result
+
+    # ── Machine layer: Meteor (bytes [15]-[17]) ───────────────────
+
+    async def async_set_meteor(
+        self,
+        on: bool | None = None,
+        pattern: int | None = None,
+        speed: int | None = None,
+    ) -> bool:
+        """Set meteor state. Only touches bytes [15]-[17]."""
+        if on is not None:
+            self.data.meteor_switch = BLE_ON if on else BLE_OFF
+        if pattern is not None:
+            self.data.meteor_value = max(1, min(3, pattern)) & 0xFF
+        if speed is not None:
+            self.data.meteor_speed = max(1, min(255, speed)) & 0xFF
         result = await self.async_send_command()
         self.async_set_updated_data(self.data)
         return result
