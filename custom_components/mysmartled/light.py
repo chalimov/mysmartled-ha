@@ -16,9 +16,10 @@ from homeassistant.const import CONF_ADDRESS, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, EFFECT_LIST
+from .const import DOMAIN, EFFECT_LIST, MODE_COLOR, MODE_EFFECT
 from .coordinator import MySmartLedCoordinator
 
 
@@ -31,7 +32,9 @@ async def async_setup_entry(
     async_add_entities([MySmartLedLight(coordinator, entry)])
 
 
-class MySmartLedLight(CoordinatorEntity[MySmartLedCoordinator], LightEntity):
+class MySmartLedLight(
+    CoordinatorEntity[MySmartLedCoordinator], RestoreEntity, LightEntity
+):
     """Representation of a YX_LED fiber light."""
 
     _attr_has_entity_name = True
@@ -53,9 +56,42 @@ class MySmartLedLight(CoordinatorEntity[MySmartLedCoordinator], LightEntity):
             model="YX_LED fiber light",
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Restore full device state from last known values."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is None:
+            return
+
+        attrs = last_state.attributes
+        s = self.coordinator.data
+
+        # Restore power
+        s.power = last_state.state == "on"
+
+        # Restore LED state
+        s.brightness = attrs.get("device_brightness", s.brightness)
+        s.red = attrs.get("device_red", s.red)
+        s.green = attrs.get("device_green", s.green)
+        s.blue = attrs.get("device_blue", s.blue)
+        s.white = attrs.get("device_white", s.white)
+        s.mode = attrs.get("device_mode", s.mode)
+        s.effect_speed = attrs.get("device_effect_speed", s.effect_speed)
+        s.sub_param1 = attrs.get("device_sub_param1", s.sub_param1)
+        s.sub_param2 = attrs.get("device_sub_param2", s.sub_param2)
+        s.mode_enable = attrs.get("device_mode_enable", s.mode_enable)
+
+        # Restore machine layer
+        s.flashing_switch = attrs.get("device_flashing_switch", s.flashing_switch)
+        s.flashing_speed = attrs.get("device_flashing_speed", s.flashing_speed)
+        s.meteor_switch = attrs.get("device_meteor_switch", s.meteor_switch)
+        s.meteor_value = attrs.get("device_meteor_value", s.meteor_value)
+        s.meteor_speed = attrs.get("device_meteor_speed", s.meteor_speed)
+
+        self.coordinator.async_set_updated_data(s)
+
     @property
     def available(self) -> bool:
-        # Available as long as connection is enabled — coordinator auto-reconnects
         return self.coordinator.enabled
 
     @property
@@ -75,11 +111,33 @@ class MySmartLedLight(CoordinatorEntity[MySmartLedCoordinator], LightEntity):
 
     @property
     def effect(self) -> str | None:
-        if self.coordinator.data.mode == 0x06:
+        if self.coordinator.data.mode == MODE_EFFECT:
             idx = self.coordinator.data.sub_param1
             if 0 <= idx < len(EFFECT_LIST):
                 return EFFECT_LIST[idx]
         return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Persist full device state for restore after reboot."""
+        s = self.coordinator.data
+        return {
+            "device_brightness": s.brightness,
+            "device_red": s.red,
+            "device_green": s.green,
+            "device_blue": s.blue,
+            "device_white": s.white,
+            "device_mode": s.mode,
+            "device_effect_speed": s.effect_speed,
+            "device_sub_param1": s.sub_param1,
+            "device_sub_param2": s.sub_param2,
+            "device_mode_enable": s.mode_enable,
+            "device_flashing_switch": s.flashing_switch,
+            "device_flashing_speed": s.flashing_speed,
+            "device_meteor_switch": s.meteor_switch,
+            "device_meteor_value": s.meteor_value,
+            "device_meteor_speed": s.meteor_speed,
+        }
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         brightness = kwargs.get(ATTR_BRIGHTNESS)
