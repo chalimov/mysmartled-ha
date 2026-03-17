@@ -18,7 +18,6 @@ from .const import (
     BLE_ON,
     CMD_HEADER,
     EFFECT_LIST,
-    HANDLE_WRITE,
     MODE_COLOR,
     MODE_EFFECT,
     POWER_OFF,
@@ -30,7 +29,6 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 RECONNECT_INTERVAL = timedelta(seconds=30)
-CONNECT_TIMEOUT = 15
 
 
 @dataclass
@@ -45,7 +43,6 @@ class MySmartLedState:
     white: bool = True
     brightness: int = 100  # 0-100
     mode: int = MODE_COLOR
-    effect_index: int = 0
     effect_speed: int = 50
     sub_param1: int = 0x13
     sub_param2: int = 0x05
@@ -77,11 +74,14 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
         self._client: BleakClient | None = None
         self._connect_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
+        self._connect_task: asyncio.Task | None = None
         self.enabled = True
+
+    # ── Connection management ─────────────────────────────────────
 
     async def _async_update_data(self) -> MySmartLedState:
         """Periodic reconnection if disconnected and enabled."""
-        if self.enabled and not self._client and not self._connect_lock.locked():
+        if self.enabled and not self._client:
             await self._connect()
         return self.data
 
@@ -96,11 +96,9 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
             self.hass.async_create_task(self._connect())
 
     async def _connect(self) -> None:
-        """Connect to the YX_LED device."""
-        if self._connect_lock.locked():
-            return
+        """Connect to the YX_LED device. Serialized by _connect_lock."""
         async with self._connect_lock:
-            if self._client:
+            if self._client or not self.enabled:
                 return
 
             device = bluetooth.async_ble_device_from_address(
@@ -135,7 +133,7 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
 
     @callback
     def _on_disconnect(self, client: BleakClient) -> None:
-        """Handle unexpected BLE disconnect."""
+        """Handle BLE disconnect."""
         _LOGGER.info("Disconnected from %s (%s)", self.device_name, self.address)
         self._client = None
         self.data.connected = False
@@ -143,6 +141,7 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
 
     async def async_disconnect(self) -> None:
         """Disconnect (called on switch-off or unload)."""
+        self.enabled = False
         client = self._client
         self._client = None
         if client:
@@ -155,8 +154,10 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
 
     async def async_request_connect(self) -> None:
         """Public: trigger a connection attempt."""
-        if not self._client and not self._connect_lock.locked():
+        if not self._client:
             await self._connect()
+
+    # ── Command building and sending ──────────────────────────────
 
     def _build_command(self) -> bytes:
         """Build the 20-byte command from current state."""
@@ -185,26 +186,19 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
         ])
 
     async def async_send_command(self) -> bool:
-        """Send the current state to the device over persistent connection."""
+        """Send the current state to the device. Fails fast if disconnected."""
         async with self._write_lock:
             client = self._client
             if not client or not client.is_connected:
-                _LOGGER.debug("Not connected to %s, attempting reconnect", self.address)
-                await self._connect()
-                client = self._client
-                if not client or not client.is_connected:
-                    _LOGGER.error("Cannot send to %s: not connected", self.address)
-                    return False
+                _LOGGER.warning("Cannot send to %s: not connected", self.address)
+                return False
 
             cmd = self._build_command()
             _LOGGER.debug("Sending to %s: %s", self.address, cmd.hex())
 
             for attempt in range(1, 4):
                 try:
-                    try:
-                        await client.write_gatt_char(UUID_WRITE, cmd, response=False)
-                    except BleakError:
-                        await client.write_gatt_char(HANDLE_WRITE, cmd, response=False)
+                    await client.write_gatt_char(UUID_WRITE, cmd, response=False)
                     _LOGGER.debug("Write OK to %s", self.address)
                     return True
                 except BleakError as e:
@@ -256,6 +250,17 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
     async def async_turn_off(self) -> bool:
         """Turn off the light. Never touches machine-layer bytes [13]-[17]."""
         self.data.power = False
+        result = await self.async_send_command()
+        self.async_set_updated_data(self.data)
+        return result
+
+    # ── LED layer: Effect speed (byte [4]) ────────────────────────
+
+    async def async_set_effect_speed(self, speed: int) -> bool:
+        """Set effect animation speed. Only relevant when in effect mode."""
+        self.data.effect_speed = max(0, min(255, speed))
+        if self.data.mode == MODE_EFFECT:
+            self.data.sub_param2 = self.data.effect_speed
         result = await self.async_send_command()
         self.async_set_updated_data(self.data)
         return result

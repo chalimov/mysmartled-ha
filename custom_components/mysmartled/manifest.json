@@ -10,5 +10,5 @@
   ],
   "iot_class": "assumed_state",
   "requirements": ["bleak-retry-connector>=3.1.0"],
-  "version": "2.1.0"
+  "version": "2.2.0"
 }

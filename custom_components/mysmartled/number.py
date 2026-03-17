@@ -1,4 +1,4 @@
-"""Number entities for MySmartLed — twinkle speed and meteor speed."""
+"""Number entities for MySmartLed — effect speed, twinkle speed, meteor speed."""
 from __future__ import annotations
 
 from homeassistant.components.number import NumberEntity, NumberMode
@@ -11,6 +11,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN,
+    EFFECT_SPEED_MAX,
+    EFFECT_SPEED_MIN,
     METEOR_SPEED_MAX,
     METEOR_SPEED_MIN,
     TWINKLE_SPEED_MAX,
@@ -37,9 +39,40 @@ async def async_setup_entry(
     address = entry.data[CONF_ADDRESS]
     name = entry.data[CONF_NAME]
     async_add_entities([
+        MySmartLedEffectSpeed(coordinator, address, name),
         MySmartLedTwinkleSpeed(coordinator, address, name),
         MySmartLedMeteorSpeed(coordinator, address, name),
     ])
+
+
+class MySmartLedEffectSpeed(
+    CoordinatorEntity[MySmartLedCoordinator], NumberEntity
+):
+    """LED effect animation speed — byte [4] when in effect mode."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Effect Speed"
+    _attr_icon = "mdi:play-speed"
+    _attr_native_min_value = EFFECT_SPEED_MIN
+    _attr_native_max_value = EFFECT_SPEED_MAX
+    _attr_native_step = 1
+    _attr_mode = NumberMode.SLIDER
+
+    def __init__(self, coordinator: MySmartLedCoordinator, address: str, name: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{address}_effect_speed"
+        self._attr_device_info = _device_info(address, name)
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.enabled
+
+    @property
+    def native_value(self) -> float:
+        return float(self.coordinator.data.effect_speed)
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator.async_set_effect_speed(int(value))
 
 
 class MySmartLedTwinkleSpeed(
