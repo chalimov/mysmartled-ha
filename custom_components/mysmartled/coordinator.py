@@ -190,7 +190,7 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
         async with self._write_lock:
             client = self._client
             if not client or not client.is_connected:
-                _LOGGER.warning("Cannot send to %s: not connected", self.address)
+                _LOGGER.debug("Cannot send to %s: not connected", self.address)
                 return False
 
             cmd = self._build_command()
