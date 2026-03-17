@@ -19,6 +19,7 @@ from .const import (
     HANDLE_WRITE,
     MODE_COLOR,
     MODE_EFFECT,
+    MODE_EFFECT_COUNT,
     POWER_OFF,
     POWER_ON,
     RESERVED_BYTE,
@@ -239,11 +240,12 @@ class MySmartLedCoordinator(DataUpdateCoordinator[MySmartLedState]):
                 self.data.red, self.data.green, self.data.blue = r, g, b
                 self.data.white = False
 
-        if effect is not None:
-            if effect in EFFECT_LIST:
-                idx = EFFECT_LIST.index(effect)
+        if effect is not None and effect in EFFECT_LIST:
+            idx = EFFECT_LIST.index(effect)
+            if idx < MODE_EFFECT_COUNT:
+                # Real mode effect (1-based index in protocol)
                 self.data.mode = MODE_EFFECT
-                self.data.sub_param1 = idx & 0xFF
+                self.data.sub_param1 = idx & 0xFF  # 0-based in our list
                 self.data.sub_param2 = self.data.effect_speed
                 self.data.mode_enable = 0x00
                 self.data.flashing_switch = 0x00

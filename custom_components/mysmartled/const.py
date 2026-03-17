@@ -25,35 +25,40 @@ MODE_COLOR_TEMPERATURE = 0x02
 MODE_COLOR_MONOCHROME = 0x03
 MODE_EFFECT = 0x06
 
-# Effect presets (indices into the mode_type=0x06 pattern list)
+# Effect presets — 20 modes from the app (mode_type=0x06, 1-based index)
+# Extracted from APK string resources in DateCenter.initFromCache
 EFFECT_LIST = [
-    "Jump RGB",
-    "Jump RGBYCMW",
-    "Crossfade RGB",
-    "Crossfade RGBYCMW",
-    "Crossfade Red",
-    "Crossfade Green",
-    "Crossfade Blue",
-    "Crossfade Yellow",
-    "Crossfade Cyan",
-    "Crossfade Magenta",
-    "Crossfade White",
-    "Blink RGB",
-    "Blink Red",
-    "Blink Green",
-    "Blink Blue",
-    "Blink Yellow",
-    "Blink Cyan",
-    "Blink Magenta",
-    "Blink White",
-    # Strobe overlay effects
+    "Seven Color Fade",       # 1
+    "RGB Fade",               # 2
+    "Seven Color Breathe",    # 3
+    "RGB Breathe",            # 4
+    "Red & Green Fade",       # 5
+    "Red & Blue Fade",        # 6
+    "Green & Blue Fade",      # 7
+    "Seven Color Jump",       # 8
+    "RGB Jump",               # 9
+    "Seven Color Flash",      # 10
+    "RGB Flash",              # 11
+    "Red Flash",              # 12
+    "Green Flash",            # 13
+    "Blue Flash",             # 14
+    "Yellow Flash",           # 15
+    "Purple Flash",           # 16
+    "Cyan Flash",             # 17
+    "White Flash",            # 18
+    "Yellow & Purple Flash",  # 19
+    "Purple & Cyan Flash",    # 20
+    # Strobe overlay (uses flashing_switch byte, not mode byte)
     "Strobe Slow",
     "Strobe Medium",
     "Strobe Fast",
-    # Meteor overlay effects
+    # Meteor overlay (uses meteor_switch byte, not mode byte)
     "Meteor 1",
     "Meteor 2",
     "Meteor 3",
     "Meteor Slow",
     "Meteor Fast",
 ]
+
+# Number of real mode effects (not overlays)
+MODE_EFFECT_COUNT = 20
