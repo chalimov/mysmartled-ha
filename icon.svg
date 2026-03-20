@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background gradient -->
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1a2744"/>
+      <stop offset="100%" stop-color="#0d1520"/>
+    </radialGradient>
+    <!-- Glow filter for fiber tips -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Stronger glow for center -->
+    <filter id="glowCenter" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Subtle outer ring gradient -->
+    <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.6"/>
+      <stop offset="50%" stop-color="#8b5cf6" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="250" fill="url(#bg)"/>
+  <!-- Outer ring -->
+  <circle cx="256" cy="256" r="250" fill="none" stroke="url(#ring)" stroke-width="4"/>
+
+  <!-- Fiber optic strands radiating from base -->
+  <!-- Base point at bottom-center ~(256, 360) -->
+  <!-- Each strand: thin curved line from base, tip has a glowing dot -->
+
+  <g opacity="0.9">
+    <!-- Strand 1 - Red, far left -->
+    <path d="M256,360 Q180,280 140,160" fill="none" stroke="#ff3366" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="140" cy="160" r="8" fill="#ff3366" filter="url(#glow)"/>
+
+    <!-- Strand 2 - Orange -->
+    <path d="M256,360 Q200,270 165,140" fill="none" stroke="#ff8833" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="165" cy="140" r="7" fill="#ff8833" filter="url(#glow)"/>
+
+    <!-- Strand 3 - Yellow -->
+    <path d="M256,360 Q215,260 195,125" fill="none" stroke="#ffcc00" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="195" cy="125" r="7" fill="#ffcc00" filter="url(#glow)"/>
+
+    <!-- Strand 4 - Lime -->
+    <path d="M256,360 Q230,265 220,115" fill="none" stroke="#88ee33" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="220" cy="115" r="7" fill="#88ee33" filter="url(#glow)"/>
+
+    <!-- Strand 5 - Green -->
+    <path d="M256,360 Q245,260 240,105" fill="none" stroke="#33dd77" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="240" cy="105" r="8" fill="#33dd77" filter="url(#glow)"/>
+
+    <!-- Strand 6 - Cyan (center-left) -->
+    <path d="M256,360 Q254,255 256,95" fill="none" stroke="#00ddee" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+    <circle cx="256" cy="95" r="9" fill="#00ddee" filter="url(#glow)"/>
+
+    <!-- Strand 7 - Blue -->
+    <path d="M256,360 Q268,260 275,105" fill="none" stroke="#3388ff" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="275" cy="105" r="8" fill="#3388ff" filter="url(#glow)"/>
+
+    <!-- Strand 8 - Indigo -->
+    <path d="M256,360 Q280,265 295,115" fill="none" stroke="#6644ff" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="295" cy="115" r="7" fill="#6644ff" filter="url(#glow)"/>
+
+    <!-- Strand 9 - Purple -->
+    <path d="M256,360 Q295,260 320,125" fill="none" stroke="#aa44ff" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="320" cy="125" r="7" fill="#aa44ff" filter="url(#glow)"/>
+
+    <!-- Strand 10 - Magenta -->
+    <path d="M256,360 Q310,270 350,140" fill="none" stroke="#ee44aa" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="350" cy="140" r="7" fill="#ee44aa" filter="url(#glow)"/>
+
+    <!-- Strand 11 - Pink, far right -->
+    <path d="M256,360 Q325,280 372,160" fill="none" stroke="#ff66aa" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="372" cy="160" r="8" fill="#ff66aa" filter="url(#glow)"/>
+  </g>
+
+  <!-- Base / lamp body -->
+  <rect x="228" y="355" rx="6" ry="6" width="56" height="40" fill="#2a3a5c" stroke="#4a6a9c" stroke-width="1.5"/>
+  <rect x="222" y="390" rx="4" ry="4" width="68" height="14" fill="#354a6e" stroke="#4a6a9c" stroke-width="1.5"/>
+
+  <!-- Center glow at emission point -->
+  <circle cx="256" cy="358" r="18" fill="white" opacity="0.15" filter="url(#glowCenter)"/>
+  <circle cx="256" cy="358" r="6" fill="white" opacity="0.4"/>
+
+  <!-- Bluetooth symbol (small, bottom-right quadrant) -->
+  <g transform="translate(370, 370) scale(0.9)" opacity="0.8">
+    <circle cx="0" cy="0" r="28" fill="#1e3a5f" stroke="#3b82f6" stroke-width="2"/>
+    <path d="M0,-16 L10,-6 L-8,8 M0,16 L10,6 L-8,-8 M0,-16 L0,16"
+          fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icon.png" alt="MySmartLed Logo" width="200"/>
+</p>
+
 # MySmartLed - Home Assistant Integration
 
 Custom Home Assistant integration for **YX_LED fiber light** BLE LED controllers (used by the "My SmartLed" Android app).
