@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icon.png" alt="MySmartLed Logo" width="200"/>
+  <img src="https://raw.githubusercontent.com/chalimov/mysmartled-ha/main/icon.png" alt="MySmartLed Logo" width="200"/>
 </p>
 
 # MySmartLed - Home Assistant Integration
